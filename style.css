@@ -1,0 +1,221 @@
+/* style.css - EduRank AI Global Theme Stylesheet */
+
+/* Global Color & Variable Definitions */
+:root {
+    --primary-color: #1e3a8a;      /* Deep Navy Blue */
+    --secondary-color: #416cb2;    /* Royal Blue Accent */
+    --accent-color: #f59e0b;       /* Gold Accent */
+    --bg-main: #f8fafc;            /* Cohesive Light Gray Background */
+    --card-bg: #ffffff;            /* Card Container Background */
+    --text-dark: #334155;          /* Primary Text Color */
+    --text-muted: #64748b;        /* Secondary Text Color */
+}
+
+/* Global Body Styling */
+body {
+    background-color: var(--bg-main) !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-dark);
+    margin: 0;
+    padding: 0;
+}
+
+/* Hero Section Banner */
+.hero-section {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: #ffffff;
+    padding: 80px 0;
+    border-bottom: 4px solid var(--accent-color);
+}
+
+/* Feature & Category Card Hover Styling */
+.category-card {
+    background-color: var(--card-bg);
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.category-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* About Section Box */
+.about-section {
+    background-color: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+/* Shared Login Container Styling (for login.php alignment) */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-main);
+}
+
+.login-card {
+    background-color: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 420px;
+}
+body.dashboard-body {
+    background-color: #f8f9fa !important;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+.sidebar {
+    width: 260px;
+    height: 100vh;
+    background-color: #0f172a !important; /* 保持深色背景 */
+    color: #ffffff !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    transition: all 0.3s ease;
+}
+
+.sidebar.collapsed {
+    left: -260px;
+}
+
+.sidebar .nav-link {
+    color: #94a3b8 !important;
+    transition: all 0.2s ease;
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+.sidebar .nav-link.active {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+
+.sidebar .nav-link:hover:not(.active) {
+    color: #ffffff !important;
+    background-color: #1e293b !important;
+}
+
+.main-content {
+    margin-left: 260px;
+    min-height: 100vh;
+    transition: all 0.3s ease;
+}
+
+.main-content.expanded {
+    margin-left: 0;
+}
+
+.top-header {
+    background-color: #0f172a;
+    color: #ffffff;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between; 
+}
+
+.toggle-btn {
+    font-size: 20px;
+    cursor: pointer;
+    color: #ffffff;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.toggle-btn:hover {
+    background-color: #1e293b;
+}
+
+.notification-icon {
+    position: relative;
+    font-size: 20px;
+    color: #ffffff;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 50%;
+}
+
+.notification-icon:hover {
+    background-color: #1e293b;
+}
+
+.notification-badge {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    background-color: #ef4444;
+    border-radius: 50%;
+}
+
+
+.card-icon-bg {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+}
+
+.custom-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+
+.review-container {
+    display: flex;
+    gap: 24px;
+}
+
+
+.review-list-card {
+    width: 320px;
+    flex-shrink: 0;
+}
+
+.student-item {
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background-color: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 10px;
+}
+
+.student-item:hover {
+    border-color: #2563eb;
+    background-color: #f8fafc;
+}
+
+.student-item.active {
+    border-color: #2563eb;
+    background-color: #eff6ff;
+}
+
+.review-detail-card {
+    flex-grow: 1;
+}
+
+.file-preview-box {
+    background-color: #f8fafc;
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+}
