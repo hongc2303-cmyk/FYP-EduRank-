@@ -4,7 +4,6 @@ require_once 'config.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-
 if (!isset($_SESSION['user_id'])) {
     die("Unauthorized access.");
 }
@@ -13,14 +12,13 @@ $report_type = $_GET['report_type'] ?? 'evaluation';
 $category_id = $_GET['category_id'] ?? 'all';
 $should_log = $_GET['log'] ?? '1';
 
-// Receive added date range parameters
+// Receive date range parameters
 $start_date = $_GET['start_date'] ?? '';
 $end_date = $_GET['end_date'] ?? '';
 
 $data = [];
 $report_title = ($report_type === 'evaluation') ? "Evaluation Report" : "Application Report";
 $category_name = "All Awards";
-
 $total_records = 0;
 $highest_score = 0;
 $total_score_sum = 0;
@@ -41,12 +39,10 @@ if (isset($pdo)) {
         // 2. Log action to Database
         if ($should_log === '1') {
             $full_title = $report_title . ' - ' . $category_name;
-            // If a date is selected, include the date in the report title as well
             if (!empty($start_date) || !empty($end_date)) {
                 $date_str = " (" . (!empty($start_date) ? $start_date : 'Start') . " to " . (!empty($end_date) ? $end_date : 'Present') . ")";
                 $full_title .= $date_str;
             }
-
             try {
                 $log_stmt = $pdo->prepare("INSERT INTO report_logs (report_title, report_type, category_id) VALUES (?, ?, ?)");
                 $log_stmt->execute([$full_title, $report_type, $category_id]);
@@ -54,18 +50,22 @@ if (isset($pdo)) {
         }
 
         $params = [];
+
+        // 3. Fetch Data with updated Status criteria (Include 'nominated')
         if ($report_type === 'evaluation') {
+            // FIX: Include 'nominated' so the Top 1 winner doesn't disappear from the report
             $sql = "
-                SELECT a.application_id, u.full_name, s.matric_no, c.category_name, 
+                SELECT a.application_id, u.full_name, s.matric_no, c.category_name, a.status,
                        e.total_score, e.remarks
                 FROM award_applications a
                 JOIN students s ON a.student_id = s.student_id
                 JOIN users u ON s.user_id = u.user_id
                 JOIN award_categories c ON a.category_id = c.category_id
                 JOIN evaluations e ON a.application_id = e.application_id
-                WHERE a.status = 'evaluated'
+                WHERE a.status IN ('evaluated', 'nominated')
             ";
         } else {
+            // Application report fetches everything
             $sql = "
                 SELECT a.application_id, u.full_name, s.matric_no, c.category_name, a.status
                 FROM award_applications a
@@ -80,7 +80,6 @@ if (isset($pdo)) {
             $sql .= " AND a.category_id = ?";
             $params[] = $category_id;
         }
-
         if (!empty($start_date)) {
             $sql .= " AND DATE(a.application_date) >= ?";
             $params[] = $start_date;
@@ -100,7 +99,7 @@ if (isset($pdo)) {
         $stmt->execute($params);
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // 4. Calculate statistical summaries using fetched real data
+        // 4. Calculate statistical summaries
         $total_records = count($data);
         if ($report_type === 'evaluation' && $total_records > 0) {
             foreach ($data as $row) {
@@ -118,7 +117,6 @@ if (isset($pdo)) {
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -126,6 +124,7 @@ if (isset($pdo)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $report_title; ?> - <?php echo htmlspecialchars($category_name); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         body { background-color: #f8f9fa; padding: 20px; font-family: Arial, sans-serif; }
         .report-container { background: white; max-width: 1000px; margin: 0 auto; padding: 40px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -146,30 +145,24 @@ if (isset($pdo)) {
 <body>
     <div class="report-container">
         <div class="text-end mb-4 no-print">
-            <button onclick="window.print()" class="btn btn-danger">
-                <i class="bi bi-printer me-2"></i>Print / Save as PDF
+            <button onclick="window.print()" class="btn btn-dark fw-bold">
+                <i class="bi bi-printer-fill me-2"></i> Print / Save as PDF
             </button>
         </div>
-
         <div class="report-header">
-            <h2 style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="#ffc107" viewBox="0 0 16 16">
-                    <path d="M8.211 2.047a.5.5 0 0 0-.422 0l-7.5 3.5a.5.5 0 0 0 .025.917l7.5 3a.5.5 0 0 0 .372 0L14 7.14V13a1 1 0 0 0-1 1v2h3v-2a1 1 0 0 0-1-1V6.739l.686-.275a.5.5 0 0 0 .025-.917z"/>
-                    <path d="M4.176 9.032a.5.5 0 0 0-.656.327l-.5 1.7a.5.5 0 0 0 .294.605l4.5 1.8a.5.5 0 0 0 .372 0l4.5-1.8a.5.5 0 0 0 .294-.605l-.5-1.7a.5.5 0 0 0-.656-.327L8 10.466z"/>
-                </svg>
-                EduRank AI System
+            <h2 class="d-flex align-items-center justify-content-center gap-2">
+                <i class="bi bi-mortarboard-fill text-warning"></i>
+                EduRank System
             </h2>
             <h4 class="text-secondary"><?php echo htmlspecialchars($report_title); ?></h4>
             <div class="mt-3 text-muted small">
                 <strong>Category Filter:</strong> <?php echo htmlspecialchars($category_name); ?> | 
-                
                 <?php if (!empty($start_date) || !empty($end_date)): ?>
                     <strong>Date Range:</strong> 
                     <?php echo !empty($start_date) ? date('d M Y', strtotime($start_date)) : 'Start'; ?> 
                     to 
                     <?php echo !empty($end_date) ? date('d M Y', strtotime($end_date)) : 'Present'; ?> | 
                 <?php endif; ?>
-
                 <strong>Generated On:</strong> <?php echo date('d M Y, H:i A'); ?>
             </div>
         </div>
@@ -177,24 +170,25 @@ if (isset($pdo)) {
         <div class="summary-box">
             <div><span>Total Records</span><strong><?php echo $total_records; ?></strong></div>
             <?php if ($report_type === 'evaluation'): ?>
-                <div><span>Highest Score</span><strong><?php echo number_format($highest_score, 1); ?></strong></div>
-                <div><span>Average Score</span><strong><?php echo number_format($average_score, 1); ?></strong></div>
+                <!-- FIX: Added Percentage sign to stats -->
+                <div><span>Highest Rating</span><strong class="text-success"><?php echo number_format($highest_score, 1); ?>%</strong></div>
+                <div><span>Average Rating</span><strong class="text-primary"><?php echo number_format($average_score, 1); ?>%</strong></div>
             <?php endif; ?>
         </div>
 
-        <table class="table table-bordered">
+        <table class="table table-bordered table-hover">
             <thead>
                 <tr>
-                    <th width="5%">No.</th>
+                    <th width="5%" class="text-center">No.</th>
                     <th width="25%">Student Name</th>
-                    <th width="15%">Matric No</th>
+                    <th width="15%" class="text-center">Matric No</th>
                     <th width="20%">Award Category</th>
                     
                     <?php if ($report_type === 'evaluation'): ?>
-                        <th width="10%" class="text-center">Score</th>
-                        <th width="25%">Remarks</th>
+                        <th width="10%" class="text-center">Rating</th>
+                        <th width="25%">Committee Remarks</th>
                     <?php else: ?>
-                        <th width="35%">Application Status</th>
+                        <th width="35%" class="text-center">Application Status</th>
                     <?php endif; ?>
                 </tr>
             </thead>
@@ -203,19 +197,37 @@ if (isset($pdo)) {
                     <tr><td colspan="6" class="text-center py-4 text-muted">No records found for this selection.</td></tr>
                 <?php else: ?>
                     <?php $count = 1; foreach ($data as $row): ?>
-                        <tr>
-                            <td><?php echo $count++; ?></td>
-                            <td class="fw-bold"><?php echo htmlspecialchars($row['full_name']); ?></td>
-                            <td><?php echo htmlspecialchars($row['matric_no']); ?></td>
-                            <td><?php echo htmlspecialchars($row['category_name']); ?></td>
+                        <tr class="<?php echo ($row['status'] === 'nominated') ? 'table-warning' : ''; ?>">
+                            <td class="text-center text-muted"><?php echo $count++; ?></td>
+                            <td class="fw-bold"><?php echo htmlspecialchars($row['full_name']); ?>
+                                <?php if ($row['status'] === 'nominated'): ?>
+                                    <div class="small text-success mt-1"><i class="bi bi-star-fill me-1"></i>Final Winner</div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-center"><?php echo htmlspecialchars($row['matric_no']); ?></td>
+                            <td class="small"><?php echo htmlspecialchars($row['category_name']); ?></td>
                             
                             <?php if ($report_type === 'evaluation'): ?>
-                                <td class="text-center fw-bold"><?php echo number_format($row['total_score'], 1); ?></td>
-                                <td class="small"><?php echo nl2br(htmlspecialchars($row['remarks'])); ?></td>
+                                <!-- FIX: Added Percentage sign and highlighting for Winner -->
+                                <td class="text-center fw-bold fs-6 <?php echo ($row['status'] === 'nominated') ? 'text-success' : 'text-primary'; ?>">
+                                    <?php echo number_format($row['total_score'], 1); ?>%
+                                </td>
+                                <td class="small text-secondary"><?php echo nl2br(htmlspecialchars($row['remarks'])); ?></td>
                             <?php else: ?>
-                                <td>
+                                <td class="text-center">
                                     <?php 
-                                        echo strtoupper(htmlspecialchars($row['status'])); 
+                                        $status = strtoupper(htmlspecialchars($row['status']));
+                                        if ($status == 'NOMINATED') {
+                                            echo '<span class="badge bg-warning text-dark border"><i class="bi bi-star-fill me-1"></i>FINAL WINNER</span>';
+                                        } elseif ($status == 'EVALUATED') {
+                                            echo '<span class="badge bg-success">EVALUATED</span>';
+                                        } elseif ($status == 'VERIFIED') {
+                                            echo '<span class="badge bg-info text-dark">PA VERIFIED</span>';
+                                        } elseif ($status == 'REJECTED') {
+                                            echo '<span class="badge bg-danger">REJECTED</span>';
+                                        } else {
+                                            echo '<span class="badge bg-secondary">PENDING</span>';
+                                        }
                                     ?>
                                 </td>
                             <?php endif; ?>
@@ -225,8 +237,9 @@ if (isset($pdo)) {
             </tbody>
         </table>
     </div>
-    <footer class="text-center p-4 mt-5 text-muted">
-    <p class="mb-0 small">&copy; 2026 EduRank AI System - Designed By JWC</p>
+
+    <footer class="text-center p-4 mt-5 text-muted no-print">
+        <p class="mb-0 small">&copy; 2026 EduRank System - Designed By JWC</p>
     </footer>
 </body>
 </html>

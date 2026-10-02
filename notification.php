@@ -15,22 +15,31 @@ if (isset($_GET['mark_read']) && isset($pdo)) {
             $stmtRead = $pdo->prepare("UPDATE award_applications SET is_read = 1 WHERE application_id = ?");
             $stmtRead->execute([$mark_app_id]);
         } catch (PDOException $e) {
-            // Silently skip if column update encounters an issue
+            // Silently skip
         }
     }
 }
 
 $notifications = [];
 $unread_notif_count = 0;
+$current_user_role = '';
 
-// 2. Fetch notifications (Both Read and Unread)
+// 2. Fetch True Count & Latest Notifications
 if (isset($_SESSION['user_id']) && isset($pdo)) {
     $current_user_id = $_SESSION['user_id'];
     $current_user_role = strtolower($_SESSION['user_role'] ?? $_SESSION['role'] ?? '');
 
     try {
         if ($current_user_role === 'student') {
-            // Fetch applications with is_read status
+            // 🌟 Student 逻辑：查非 pending 的状态更新
+            $countStmt = $pdo->prepare("
+                SELECT COUNT(*) FROM award_applications a 
+                JOIN students s ON a.student_id = s.student_id 
+                WHERE s.user_id = ? AND a.status != 'pending' AND COALESCE(a.is_read, 0) = 0
+            ");
+            $countStmt->execute([$current_user_id]);
+            $unread_notif_count = $countStmt->fetchColumn();
+
             $stmtNotif = $pdo->prepare("
                 SELECT a.application_id, a.status, COALESCE(a.is_read, 0) AS is_read, c.category_name, v.verification_date, v.remarks
                 FROM award_applications a
@@ -45,7 +54,15 @@ if (isset($_SESSION['user_id']) && isset($pdo)) {
             $notifications = $stmtNotif->fetchAll(PDO::FETCH_ASSOC);
 
         } elseif ($current_user_role === 'advisor' || $current_user_role === 'academic advisor') {
-            // Fetch pending applications with is_read status
+            // 🌟 PA 逻辑：查 pending 的新申请
+            $countStmt = $pdo->prepare("
+                SELECT COUNT(*) FROM award_applications a 
+                JOIN students s ON a.student_id = s.student_id 
+                WHERE s.advisor_id = ? AND a.status = 'pending' AND COALESCE(a.is_read, 0) = 0
+            ");
+            $countStmt->execute([$current_user_id]);
+            $unread_notif_count = $countStmt->fetchColumn();
+
             $stmtNotif = $pdo->prepare("
                 SELECT a.application_id, a.application_date, COALESCE(a.is_read, 0) AS is_read, u.full_name AS student_name, c.category_name
                 FROM award_applications a
@@ -58,15 +75,32 @@ if (isset($_SESSION['user_id']) && isset($pdo)) {
             ");
             $stmtNotif->execute([$current_user_id]);
             $notifications = $stmtNotif->fetchAll(PDO::FETCH_ASSOC);
-        }
 
-        // Count total unread items
-        foreach ($notifications as $n) {
-            if ($n['is_read'] == 0) {
-                $unread_notif_count++;
+        } elseif ($current_user_role === 'evaluation committee') {
+            // 🌟 Committee 逻辑：必须先查出他负责哪个奖项，再查 verified 的新审核
+            $stmtRole = $pdo->prepare("SELECT assigned_category_id FROM users WHERE user_id = ?");
+            $stmtRole->execute([$current_user_id]);
+            $assigned_category_id = $stmtRole->fetchColumn();
+
+            if ($assigned_category_id) {
+                $countStmt = $pdo->prepare("SELECT COUNT(*) FROM award_applications WHERE status = 'verified' AND category_id = ? AND COALESCE(is_read, 0) = 0");
+                $countStmt->execute([$assigned_category_id]);
+                $unread_notif_count = $countStmt->fetchColumn();
+
+                $stmtNotif = $pdo->prepare("
+                    SELECT a.application_id, a.application_date, COALESCE(a.is_read, 0) AS is_read, u.full_name AS student_name, c.category_name
+                    FROM award_applications a
+                    JOIN students s ON a.student_id = s.student_id
+                    JOIN users u ON s.user_id = u.user_id
+                    JOIN award_categories c ON a.category_id = c.category_id
+                    WHERE a.status = 'verified' AND a.category_id = ?
+                    ORDER BY a.application_date DESC
+                    LIMIT 10
+                ");
+                $stmtNotif->execute([$assigned_category_id]);
+                $notifications = $stmtNotif->fetchAll(PDO::FETCH_ASSOC);
             }
         }
-
     } catch (PDOException $e) {
         $notifications = [];
         $unread_notif_count = 0;
@@ -74,8 +108,8 @@ if (isset($_SESSION['user_id']) && isset($pdo)) {
 }
 ?>
 
+<!-- UI Portion (Bootstrap Dropdown) -->
 <div class="dropdown">
-    <!-- Bell icon with red notification dot (Lampu Merah) -->
     <button class="btn btn-link text-white position-relative border-0 p-0 shadow-none" type="button" id="notifDropdown" data-bs-toggle="dropdown" aria-expanded="false">
         <i class="bi bi-bell fs-5"></i>
         <?php if ($unread_notif_count > 0): ?>
@@ -85,24 +119,23 @@ if (isset($_SESSION['user_id']) && isset($pdo)) {
         <?php endif; ?>
     </button>
 
-    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 my-2 p-0" aria-labelledby="notifDropdown" style="width: 320px; max-height: 400px; overflow-y: auto;">
-        <li class="dropdown-header fw-bold border-bottom p-3 text-dark d-flex justify-content-between align-items-center bg-white">
-            <span><i class="bi bi-bell me-1 text-primary"></i> Notifications</span>
+    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 my-2 p-0" aria-labelledby="notifDropdown" style="width: 350px; max-height: 400px; overflow-y: auto;">
+        <li class="dropdown-header fw-bold border-bottom p-3 text-dark d-flex justify-content-between align-items-center bg-light">
+            <span><i class="bi bi-bell-fill me-2 text-primary"></i>Notifications</span>
             <?php if ($unread_notif_count > 0): ?>
-                <span class="badge bg-danger rounded-pill"><?php echo $unread_notif_count; ?> New</span>
+                <span class="badge bg-danger rounded-pill shadow-sm"><?php echo $unread_notif_count; ?> New</span>
             <?php endif; ?>
         </li>
 
         <?php if (empty($notifications)): ?>
-            <li class="text-center py-4 text-muted bg-white">
-                <i class="bi bi-bell-slash fs-4 d-block mb-1"></i>
-                <small>No application updates yet</small>
+            <li class="text-center py-5 text-muted bg-white">
+                <i class="bi bi-inbox fs-1 d-block mb-2 text-light"></i>
+                <small>No new updates</small>
             </li>
         <?php else: ?>
             <?php foreach ($notifications as $notif): ?>
                 <?php 
                     $is_unread = ($notif['is_read'] == 0);
-                    // Darker background for UNREAD items, pure white background for READ items
                     $bg_class = $is_unread ? 'bg-primary-subtle' : 'bg-white';
                 ?>
                 <li>
@@ -110,12 +143,10 @@ if (isset($_SESSION['user_id']) && isset($pdo)) {
                         <a class="dropdown-item p-3 border-bottom text-wrap <?php echo $bg_class; ?>" href="student_dashboard.php?page=history&view_app=<?php echo $notif['application_id']; ?>&mark_read=<?php echo $notif['application_id']; ?>">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <strong class="text-dark small d-flex align-items-center gap-1">
-                                    <?php if ($is_unread): ?>
-                                        <span class="p-1 bg-danger rounded-circle d-inline-block"></span>
-                                    <?php endif; ?>
+                                    <?php if ($is_unread): ?><span class="p-1 bg-danger rounded-circle d-inline-block"></span><?php endif; ?>
                                     Application Status Update
                                 </strong>
-                                <small class="text-muted" style="font-size: 10px;"><?php echo !empty($notif['verification_date']) ? date('M d', strtotime($notif['verification_date'])) : 'Recent'; ?></small>
+                                <small class="text-muted" style="font-size: 11px;"><?php echo !empty($notif['verification_date']) ? date('M d', strtotime($notif['verification_date'])) : 'Recent'; ?></small>
                             </div>
                             <p class="mb-1 text-secondary" style="font-size: 12px;">
                                 Category: <strong><?php echo htmlspecialchars($notif['category_name']); ?></strong><br>
@@ -135,15 +166,17 @@ if (isset($_SESSION['user_id']) && isset($pdo)) {
                             <?php endif; ?>
                         </a>
                     <?php else: ?>
-                        <a class="dropdown-item p-3 border-bottom text-wrap <?php echo $bg_class; ?>" href="pa_review.php?app_id=<?php echo $notif['application_id']; ?>&mark_read=<?php echo $notif['application_id']; ?>">
+                        <!-- 🌟 统一 PA 和 Committee 的跳转页面逻辑 -->
+                        <?php $link_page = ($current_user_role === 'evaluation committee') ? 'evaluate.php' : 'pa_review.php'; ?>
+                        <?php $id_param = ($current_user_role === 'evaluation committee') ? 'id' : 'app_id'; ?>
+                        
+                        <a class="dropdown-item p-3 border-bottom text-wrap <?php echo $bg_class; ?>" href="<?php echo $link_page; ?>?<?php echo $id_param; ?>=<?php echo $notif['application_id']; ?>&mark_read=<?php echo $notif['application_id']; ?>">
                             <div class="d-flex justify-content-between align-items-center mb-1">
                                 <strong class="text-dark small d-flex align-items-center gap-1">
-                                    <?php if ($is_unread): ?>
-                                        <span class="p-1 bg-danger rounded-circle d-inline-block"></span>
-                                    <?php endif; ?>
-                                    New Application Submitted
+                                    <?php if ($is_unread): ?><span class="p-1 bg-danger rounded-circle d-inline-block"></span><?php endif; ?>
+                                    Action Required
                                 </strong>
-                                <small class="text-muted" style="font-size: 10px;"><?php echo date('M d', strtotime($notif['application_date'])); ?></small>
+                                <small class="text-muted" style="font-size: 11px;"><?php echo date('M d', strtotime($notif['application_date'])); ?></small>
                             </div>
                             <p class="mb-0 text-secondary" style="font-size: 12px;">
                                 Student: <strong><?php echo htmlspecialchars($notif['student_name']); ?></strong><br>
@@ -153,6 +186,10 @@ if (isset($_SESSION['user_id']) && isset($pdo)) {
                     <?php endif; ?>
                 </li>
             <?php endforeach; ?>
+            <!-- View All 按钮 -->
+            <li class="text-center bg-light">
+                <a class="dropdown-item text-primary fw-bold py-2 small" href="#" style="font-size: 13px;">View All Applications</a>
+            </li>
         <?php endif; ?>
     </ul>
 </div>

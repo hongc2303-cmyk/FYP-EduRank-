@@ -62,8 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         $error_msg = "Please fill in all password fields.";
     } elseif ($new_password !== $confirm_password) {
         $error_msg = "New password and confirmation do not match.";
-    } elseif (strlen($new_password) < 6) {
-        $error_msg = "New password must be at least 6 characters long.";
+    } elseif (strlen($new_password) < 8) {
+        $error_msg = "New password must be at least 8 characters long.";
     } else {
         try {
             $pwd_stmt = $pdo->prepare("SELECT password FROM users WHERE user_id = ?");
@@ -111,7 +111,7 @@ $role = $_SESSION['user_role'] ?? 'Academic Advisor';
         <div>
             <div class="d-flex align-items-center gap-2 mb-4">
                 <i class="fa-solid fa-graduation-cap text-warning me-2 fs-4"></i>
-                <span class="fs-5 fw-bold text-white">EduRank AI</span>
+                <span class="fs-5 fw-bold text-white">EduRank</span>
             </div>
 
 
@@ -222,7 +222,7 @@ $role = $_SESSION['user_role'] ?? 'Academic Advisor';
 
                             <div class="mb-3">
                                 <label class="form-label text-secondary fw-medium" style="font-size: 13px;">New Password</label>
-                                <input type="password" name="new_password" class="form-control" placeholder="Minimum 6 characters" required>
+                                <input type="password" name="new_password" class="form-control" placeholder="Minimum 8 characters" required>
                             </div>
 
                             <div class="mb-4">
@@ -244,7 +244,7 @@ $role = $_SESSION['user_role'] ?? 'Academic Advisor';
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <footer class="text-center p-4 mt-5 text-muted">
-    <p class="mb-0 small">&copy; 2026 EduRank AI System - Designed By JWC</p>
+    <p class="mb-0 small">&copy; 2026 EduRank System - Designed By JWC</p>
 </footer>
 </body>
 </html>

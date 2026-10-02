@@ -4,9 +4,12 @@ require_once 'config.php';
 
 $error = '';
 $form_data = [];
+$pa_list = [];
+$class_list = []; 
 
-// Fetch Academic Advisors from users table
+// 2. Fetch Academic Advisors and Active Classes from database
 try {
+    // Fetch available Academic Advisors (PAs)
     $stmt = $pdo->prepare("
         SELECT user_id, full_name 
         FROM users 
@@ -15,28 +18,41 @@ try {
     ");
     $stmt->execute();
     $pa_list = $stmt->fetchAll();
+
+    // Fetch active classes for the dropdown menu
+    $stmt2 = $pdo->prepare("
+        SELECT class_name 
+        FROM classes 
+        WHERE is_active = 1 
+        ORDER BY class_name
+    ");
+    $stmt2->execute();
+    $class_list = $stmt2->fetchAll(PDO::FETCH_COLUMN);
+
 } catch(PDOException $e) {
-    $error = "System error. Please try again later.";
+    $error = "System error while loading data. Please try again later.";
 }
 
+// 3. Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $full_name        = sanitizeInput($_POST['full_name'] ?? '');
     $email            = sanitizeInput($_POST['email'] ?? '');
     $password         = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
     $matric_no        = sanitizeInput($_POST['matric_no'] ?? '');
-    $semester         = 5; // Fixed to Semester 5
+    $student_class    = sanitizeInput($_POST['student_class'] ?? ''); 
     $phone            = sanitizeInput($_POST['phone'] ?? '');
-    $advisor_id       = filter_var($_POST['pa_id'] ?? 0, FILTER_VALIDATE_INT); // Maps to advisor_id
+    $advisor_id       = filter_var($_POST['pa_id'] ?? 0, FILTER_VALIDATE_INT);
     
     $errors = [];
     
-    // Validation
+    // Form Validation Rules
     if (empty($full_name) || strlen($full_name) < 3) {
         $errors[] = "Full name must be at least 3 characters.";
     }
-    // Capitalize full name
-    $full_name = ucwords(strtolower($full_name));
+    
+    // Capitalize full name to ALL CAPS (Server-side failsafe)
+    $full_name = strtoupper($full_name);
     
     if (empty($email) || !validateEmail($email)) {
         $errors[] = "Please enter a valid email address.";
@@ -59,30 +75,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($matric_no) || strlen($matric_no) < 4) {
         $errors[] = "Please enter a valid matric number.";
     }
+    if (empty($student_class)) {
+        $errors[] = "Please select your class.";
+    }
+    if (empty($phone) || strlen($phone) < 9) {
+        $errors[] = "Please enter a valid phone number.";
+    }
     if ($advisor_id == 0) {
-        $errors[] = "Please select your PA.";
+        $errors[] = "Please select your Academic Advisor.";
     }
     
+    // If no errors, proceed with database insertion
     if (empty($errors)) {
         try {
-            // Check if email already exists
+            // Check if email already exists in the system
             $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
             $stmt->execute([$email]);
             if ($stmt->fetch()) {
                 $errors[] = "Email already registered.";
             } else {
-                // Check if matric number already exists
+                // Check if matric number already exists in the system
                 $stmt = $pdo->prepare("SELECT student_id FROM students WHERE matric_no = ?");
                 $stmt->execute([$matric_no]);
                 if ($stmt->fetch()) {
                     $errors[] = "Matric number already registered.";
                 } else {
-                    // Hash password
+                    // Hash the password securely
                     $hashed_password = hashPassword($password);
                     
+                    // Begin Transaction to ensure data consistency
                     $pdo->beginTransaction();
                     
-                    // 1. Insert into users table
+                    // Insert into 'users' table
                     $stmt = $pdo->prepare("
                         INSERT INTO users (full_name, email, password, role, is_active) 
                         VALUES (?, ?, ?, 'Student', 1)
@@ -90,21 +114,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([$full_name, $email, $hashed_password]);
                     $user_id = $pdo->lastInsertId();
                     
-                    // 2. Insert into students table (FIXED: using advisor_id column)
+                    // Insert into 'students' table, storing selected class in 'programme' column
                     $stmt = $pdo->prepare("
-                        INSERT INTO students (user_id, matric_no, programme, semester, phone, advisor_id) 
-                        VALUES (?, ?, 'DIT', ?, ?, ?)
+                        INSERT INTO students (user_id, matric_no, programme, phone, advisor_id) 
+                        VALUES (?, ?, ?, ?, ?)
                     ");
-                    $stmt->execute([$user_id, $matric_no, $semester, $phone, $advisor_id]);
+                    $stmt->execute([$user_id, strtoupper($matric_no), strtoupper($student_class), $phone, $advisor_id]);
                     
+                    // Commit transaction
                     $pdo->commit();
                     
-                    // Redirect back to login with success message
+                    // Redirect back to login with a success message
                     header("Location: login.php?msg=" . urlencode("Registration successful! Please log in with your credentials."));
                     exit();
                 }
             }
         } catch(PDOException $e) {
+            // Rollback changes if any database error occurs
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
@@ -112,13 +138,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
+    // Store errors and retain form data for UX
     $error = implode("<br>", $errors);
     $form_data = [
         'full_name' => $full_name, 
         'email' => $email, 
         'matric_no' => $matric_no, 
+        'student_class' => $student_class, 
         'phone' => $phone, 
-        'semester' => $semester, 
         'pa_id' => $advisor_id
     ];
 }
@@ -128,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EduRank AI - Register</title>
+    <title>EduRank - Register</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
@@ -137,6 +164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             min-height: 100vh; 
             padding: 40px 20px;
             font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         .register-card { 
             background-color: #1e293b; 
@@ -164,9 +194,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .form-control::placeholder {
             color: #94a3b8;
         }
-        .form-control option, .form-select option {
-            background-color: #1e293b;
-            color: white;
+
+        .form-control { 
+            background-color: #334155; 
+            border: 1px solid #475569; 
+            color: white; 
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .form-select {
+            background-color: #334155; 
+            border: 1px solid #475569; 
+            color: white; 
+            border-radius: 10px;
+            padding: 12px 14px;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
         }
         .form-label {
             color: #94a3b8;
@@ -252,17 +295,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background-color: #334155;
             transition: all 0.3s;
         }
-        .semester-badge {
-            background: #22c55e20;
-            color: #22c55e;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            border: 1px solid #22c55e40;
-            display: inline-block;
-            width: 100%;
-            text-align: center;
+        .auth-footer {
+            color: #475569;
+            font-size: 13px;
         }
     </style>
 </head>
@@ -271,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="card register-card">
     <div class="text-center mb-3">
         <div class="logo-text">
-            <i class="bi bi-trophy-fill me-2"></i>EduRank AI
+            <i class="bi bi-trophy-fill me-2"></i>EduRank
         </div>
         <div class="d-flex align-items-center justify-content-center gap-2 mt-1">
             <p class="text-secondary-custom text-sm mb-0">Student Registration</p>
@@ -288,13 +323,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     <?php endif; ?>
 
-    <form method="POST" action="register.php" novalidate>
+    <form method="POST" action="" novalidate>
+        
         <div class="form-group">
             <label class="form-label">Full Name <span class="required-star">*</span></label>
             <input type="text" name="full_name" class="form-control" 
                    value="<?php echo htmlspecialchars($form_data['full_name'] ?? ''); ?>" 
-                   placeholder="e.g., Ahmad Bin Abdullah"
-                   required>
+                   placeholder="" required>
             <div class="field-description">Your name will be automatically capitalized</div>
         </div>
 
@@ -302,8 +337,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label class="form-label">Email Address <span class="required-star">*</span></label>
             <input type="email" name="email" class="form-control" 
                    value="<?php echo htmlspecialchars($form_data['email'] ?? ''); ?>" 
-                   placeholder="your.email@example.com"
-                   required>
+                   placeholder="your.email@example.com" required>
             <div class="field-description">Your institutional or personal email</div>
         </div>
 
@@ -325,40 +359,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="form-label">Matric No. <span class="required-star">*</span></label>
                 <input type="text" name="matric_no" class="form-control" 
                        value="<?php echo htmlspecialchars($form_data['matric_no'] ?? ''); ?>" 
-                       placeholder="e.g., DIT123456"
-                       required>
-                <div class="field-description">Your student identification number</div>
+                       placeholder="e.g. 13DIT24F1178" required>
             </div>
             <div class="form-group">
-                <label class="form-label">Phone Number</label>
-                <input type="tel" name="phone" class="form-control" 
-                       placeholder="e.g., 0113992232" 
-                       value="<?php echo htmlspecialchars($form_data['phone'] ?? ''); ?>">
-            </div>
-        </div>
-
-        <div class="form-row">
-            <div class="form-group">
-                <label class="form-label">Semester <span class="required-star">*</span></label>
-                <div class="semester-badge">
-                    <i class="bi bi-book me-1"></i>
-                    Semester 5 (Fixed)
-                </div>
-                <input type="hidden" name="semester" value="5">
-                <div class="field-description">All students are registered for Semester 5</div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">PA (Penasihat Akademik) <span class="required-star">*</span></label>
-                <select name="pa_id" class="form-select" required>
-                    <option value="">-- Select your PA --</option>
-                    <?php foreach($pa_list as $pa): ?>
-                        <option value="<?php echo $pa['user_id']; ?>" <?php echo (($form_data['pa_id'] ?? '') == $pa['user_id']) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($pa['full_name']); ?>
+                <label class="form-label">Class <span class="required-star">*</span></label>
+                <select name="student_class" class="form-select" required>
+                    <option value="">-- Select Class --</option>
+                    <?php foreach($class_list as $class_name): ?>
+                        <option value="<?php echo htmlspecialchars($class_name); ?>" 
+                            <?php echo (($form_data['student_class'] ?? '') === $class_name) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($class_name); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
-                <div class="field-description">Select your academic advisor</div>
             </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Phone Number <span class="required-star">*</span></label>
+            <input type="tel" name="phone" class="form-control" 
+                   placeholder="e.g. 01139989677" 
+                   value="<?php echo htmlspecialchars($form_data['phone'] ?? ''); ?>" required>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Academic Advisor (PA) <span class="required-star">*</span></label>
+            <select name="pa_id" class="form-select" required>
+                <option value="">-- Select your PA --</option>
+                <?php foreach($pa_list as $pa): ?>
+                    <option value="<?php echo $pa['user_id']; ?>" <?php echo (($form_data['pa_id'] ?? '') == $pa['user_id']) ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($pa['full_name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <div class="field-description">Select your assigned academic advisor from the list</div>
         </div>
 
         <div class="divider"></div>
@@ -376,20 +410,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 </div>
 
+<footer class="text-center p-4 mt-auto auth-footer">
+    <p class="mb-0">&copy; <?php echo date('Y'); ?> EduRank System - Designed By JWC</p>
+</footer>
+
 <script>
-    // Name capitalization on input
+    // Auto capitalize Full Name
     document.querySelector('input[name="full_name"]').addEventListener('input', function() {
-        // This will auto-capitalize as user types
-        const words = this.value.split(' ');
-        const capitalized = words.map(word => {
-            if (word.length > 0) {
-                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-            }
-            return word;
-        });
-        this.value = capitalized.join(' ');
+        this.value = this.value.toUpperCase();
     });
 
+    // Auto capitalize Matric No.
+    document.querySelector('input[name="matric_no"]').addEventListener('input', function() {
+        this.value = this.value.toUpperCase();
+    });
+
+    // Password strength logic strictly matching the 4 required criteria
     document.getElementById('password').addEventListener('input', function() {
         const password = this.value;
         const strengthBar = document.getElementById('passwordStrength');
@@ -399,22 +435,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (password.match(/[a-z]/)) strength++;
         if (password.match(/[A-Z]/)) strength++;
         if (password.match(/[0-9]/)) strength++;
-        if (password.match(/[^a-zA-Z0-9]/)) strength++;
         
-        const colors = ['#ef4444', '#ef4444', '#f59e0b', '#f59e0b', '#22c55e', '#22c55e'];
-        const widths = ['0%', '20%', '40%', '60%', '80%', '100%'];
+        const colors = ['#ef4444', '#ef4444', '#f59e0b', '#84cc16', '#22c55e'];
+        const widths = ['0%', '25%', '50%', '75%', '100%'];
         
         strengthBar.style.width = widths[strength];
         strengthBar.style.backgroundColor = colors[strength];
-    });
-
-    // Prevent form submission if semester is manually changed
-    document.querySelector('form').addEventListener('submit', function(e) {
-        // Ensure semester is always 5
-        const hiddenInput = document.querySelector('input[name="semester"]');
-        if (hiddenInput) {
-            hiddenInput.value = 5;
-        }
     });
 </script>
 

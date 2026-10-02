@@ -1,6 +1,5 @@
 <?php
 require_once 'config.php';
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -23,24 +22,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "New passwords do not match.";
     } else {
         try {
-            // 对新密码进行加密哈希处理 (确保使用了你系统定义的加密函数，如 hashPassword 或 password_hash)
             $hashed_password = function_exists('hashPassword') ? hashPassword($new_password) : password_hash($new_password, PASSWORD_BCRYPT);
             
-            // 更新数据库密码，并将 must_change_password 设为 0
             $stmt = $pdo->prepare("
                 UPDATE users 
                 SET password = ?, must_change_password = 0 
                 WHERE user_id = ?
             ");
             $stmt->execute([$hashed_password, $_SESSION['user_id']]);
-
-            // 清除 Session 并带提示跳转回 login.php 重新登录
+            
             session_unset();
             session_destroy();
 
-            header("Location: login.php?msg=" . urlencode("Password updated successfully! Please log in with your new password."));
+            
+            header("Location: login.php?type=staff&msg=" . urlencode("Password updated successfully! Please log in with your new password."));
             exit();
-
+            
         } catch (PDOException $e) {
             $error = "Database Error: " . $e->getMessage();
         }
@@ -110,7 +107,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
-
 <div class="card login-card">
     <div class="text-center mb-3">
         <h4 class="text-white fw-bold"><i class="bi bi-shield-lock text-warning me-2"></i>Change Password</h4>
@@ -133,17 +129,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label class="form-label">New Password</label>
             <input type="password" name="new_password" class="form-control" placeholder="Enter new password" required>
         </div>
-
         <div class="mb-4">
             <label class="form-label">Confirm New Password</label>
             <input type="password" name="confirm_password" class="form-control" placeholder="Re-enter new password" required>
         </div>
-
         <button type="submit" class="btn btn-primary">
             <i class="bi bi-key me-2"></i>Update Password & Re-login
         </button>
     </form>
 </div>
-
 </body>
 </html>
