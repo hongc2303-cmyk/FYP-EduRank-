@@ -76,7 +76,7 @@ body.dashboard-body {
 .sidebar {
     width: 260px;
     height: 100vh;
-    background-color: #0f172a !important; /* 保持深色背景 */
+    background-color: #0f172a !important; 
     color: #ffffff !important;
     position: fixed;
     top: 0;
